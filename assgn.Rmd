@@ -1,0 +1,304 @@
+## Project Assignment 1 for Reproducible Research
+### Johns Hopkin's Data Science Specialization at Coursera
+
+### Overview
+
+This is a peer-reviewed assignment for the above-mentioned course. 
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The data for this assignment is obtained by forking the [course repository](https://github.com/rdpeng/RepData_PeerAssessment1)
+
+This assignment demonstrates R markdown and knitr, where the code for running the analyses, the R output and the text description are all contained within one single source file (```assgn.Rmd```):
+
+### 1. Code for reading in the dataset and/or processing the data     
+#### Loading & Preprocessing of the Data
+
+The following code loads and inspects the dataset:
+
+```{r, echo=TRUE, results="as-is"}
+inData <- read.table( './data/activity.csv',
+                      sep = ",",
+                     header = TRUE,
+                     stringsAsFactors = FALSE,
+                     colClasses = c( "numeric", "Date", "factor" ) ### specifying the types of each column
+                    )
+```
+
+#### Inspect the data
+
+Dataset contains over 17k rows, and 3 columns: ```steps, date``` and ```interval```.
+
+There's roughly 13% missing data on the ```steps``` variable. In later part of the analysis, an inputation method will be applied to these missing values (More about this later).
+			     
+``` {r, echo=TRUE, results="as-is"}
+dim( inData )       ### check dimension
+str( inData )       ### check structure of the data frame and type of columns
+apply( inData, 2,   ### tabulate pctg missing data for each column
+       function(x){
+         sum( is.na( x ) ) / dim( inData )[ 1 ] 
+       }
+     )
+```	
+
+
+
+
+### 2. Histogram of the total number of steps taken each day
+
+To obtain total number of steps taken each day, we first need to aggregate ```steps``` by ```date```, and then use the aggregated sum of steps for plotting:
+
+```{r, echo=TRUE, results="as-is"}
+aggSteps <- aggregate( inData$steps,
+                      by = list( inData$date ),
+                      FUN = sum,
+                      na.rm = TRUE
+                     )
+names( aggSteps ) <- c( "Day", "Steps" )
+plot( x = aggSteps$Day,
+     y = aggSteps$Steps,
+     type = "h",
+     main = "Total Number of Steps per Day",
+     xlab = "Day",
+     ylab = "Steps"
+     )
+```
+
+
+
+	
+### 3. Mean and median number of steps taken each day
+
+```{r, echo=TRUE, results="as-is"}
+meanStepsPerDay   <- mean( aggSteps$Steps )
+medianStepsPerDay <- median( aggSteps$Steps )
+```
+
+Mean and Median number of steps taken each day are: `r meanStepsPerDay` and `r medianStepsPerDay`, respectively.
+	
+
+
+		        
+### 4. Time series plot of the average number of steps taken
+
+We first need to obtain aggregated average steps, then plot the results:
+
+```{r, echo=TRUE, results="as-is"}
+aggAvg <- aggregate( inData$steps,
+                    by = list( inData$date ),
+                    FUN = mean,
+                    na.rm = TRUE
+                    )
+names( aggAvg ) <- c( "Day", "Avg.Steps" )
+plot( x = aggAvg$Day,
+     y = aggAvg$Avg.Steps,
+     type = "o",
+     main = "Average Number of Steps per Day",
+     xlab = "Day",
+     ylab = "Avg.Steps"
+     )
+```
+
+
+
+	
+### 5. The 5-minute interval that, on average, contains the maximum number of steps
+
+For this, we need to do aggregation to obtain the max steps for each day.
+    
+We''ll also need a custom function that checks to see wheter the steps of a particular interval is the max for that day. This function will return TRUE if yes, and FALSE if that's not the case. We'll add one column to the original dataset, nalled ```is.Max```, and process each row with this function.
+
+Then we'll do aggregation over the intervals, taking the sum of ```is.Max```, the five minute interval that we want is the one with the highest sum of ```is.Max```.
+
+```{r, warning=FALSE, echo=TRUE, results="as-is"}     
+aggMax <- aggregate( inData$steps,
+                    by = list( inData$date ),
+                    FUN = max,
+                    na.rm = TRUE
+                   )
+
+names( aggMax ) <- c( "Day", "Max" )
+
+isMaxOfDay <- function( aRow ) {
+    idx <- which( aggMax$Day == aRow$date )
+    maxOfDay <- aggMax[ idx, 2 ]
+    return( aRow$steps == maxOfDay )
+}
+
+for( i in 1:dim(inData)[1] ){
+    inData[ i, 4 ] <- isMaxOfDay( inData[ i, ] )
+}
+
+names( inData ) <- c( "steps", "date", "interval", "is.Max" )
+
+aggMaxInterval <- aggregate( inData$is.Max, by=list( inData$interval ),
+                             FUN = function(x){
+                                sum( x, na.rm = TRUE )
+                             }
+                           )
+topInterval <- aggMaxInterval[ which.max( aggMaxInterval$x ), 1 ]
+```
+
+The 5 minute interval with, on average, highest number of steps is `r topInterval`
+
+
+
+    
+### 6. Code to describe and show a strategy for imputing missing data
+
+Missing data for a particular interval will be inputed using the following strategy:
+- gather all available data on that interval
+- compute the mean for that interval
+- substitute the missing value with this mean
+
+```{r, echo=TRUE, results="as-is"}
+aggMeanInterval <- aggregate( inData$steps,  ### obtain aggregated Median for all intervals
+                               by = list( inData$interval ),
+                               FUN = mean,
+                               na.rm = TRUE
+                              )
+names( aggMeanInterval ) <- c( "Interval", "Mean" )
+
+subsWithMean <- function( aRow ) {           ### helper function
+    idx <- which( aggMeanInterval$Interval == aRow$interval )
+    subsVal <- aggMeanInterval[ idx, 2 ]
+    return( subsVal )
+}
+
+for( i in 1 : dim( inData )[1] ) {             ### populate missing values
+    if( is.na( inData[ i, 1 ] ) ){
+        inData[ i, 1 ] <- subsWithMean( inData[ i, ] )
+    }
+}
+
+```
+  	
+
+
+	
+### 7. Histogram of the total number of steps taken each day after missing values are imputed
+
+Let's re-run the exact same code as in number 2 above.
+      To obtain total number of steps taken each day, we first need to aggregate ```steps``` by ```date```, and then use the aggregated sum of steps for plotting:
+
+```{r, echo=TRUE, results="as-is"}
+aggSteps <- aggregate( inData$steps,
+                      by = list( inData$date ),
+                      FUN = sum,
+                      na.rm = TRUE
+                     )
+names( aggSteps ) <- c( "Day", "Steps" )
+plot( x = aggSteps$Day,
+     y = aggSteps$Steps,
+     type = "h",
+     main = "Total Number of Steps per Day",
+     xlab = "Day",
+     ylab = "Steps"
+     )
+```
+
+
+
+        
+### 8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+
+For this, we first need to obtain the weekdays of each date, by converting each date into POSIXlt object and then accessing its ```$wday``` property.
+
+Then we'll split the rows into 7 parts.
+         
+```{r, echo=TRUE, results="as-is"}    
+inData$wday <- as.POSIXlt( inData$date )$wday
+
+mondays    <- subset( inData, inData$wday == 1 )
+tuesdays   <- subset( inData, inData$wday == 2 )
+wednesdays <- subset( inData, inData$wday == 3 )
+thursdays  <- subset( inData, inData$wday == 4 )
+fridays    <- subset( inData, inData$wday == 5 )
+saturdays  <- subset( inData, inData$wday == 6 )
+sundays    <- subset( inData, inData$wday == 0 )
+
+```
+
+Within each part, we'll aggregate the average steps by interval.
+
+```{r, echo=TRUE, results="as-is"}
+
+aggMon <- aggregate( mondays$steps, by=list( mondays$interval ), na.rm=TRUE, FUN = mean )
+aggTue <- aggregate( tuesdays$steps, by=list( tuesdays$interval ), na.rm=TRUE, FUN = mean )
+aggWed <- aggregate( wednesdays$steps, by=list( wednesdays$interval ), na.rm=TRUE, FUN = mean )
+aggThu <- aggregate( thursdays$steps, by=list( thursdays$interval ), na.rm=TRUE, FUN = mean )
+aggFri <- aggregate( fridays$steps, by=list( fridays$interval ), na.rm=TRUE, FUN = mean )
+aggSat <- aggregate( saturdays$steps, by=list( saturdays$interval ), na.rm=TRUE, FUN = mean )
+aggSun <- aggregate( sundays$steps, by=list( sundays$interval ), na.rm=TRUE, FUN = mean )
+
+```
+       
+And then finally plot these in a panel plot.
+
+```{r, echo=TRUE, results="as-is"}
+par( mfrow=c( 2, 4 ) )
+
+plot( x = aggMon[ , 1 ],
+     y = aggMon[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Monday",
+     ylab = "Avg.Steps"
+     )
+
+plot( x = aggTue[ , 1 ],
+     y = aggTue[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Tuesday"
+     )
+
+plot( x = aggWed[ , 1 ],
+     y = aggWed[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Wednesday"
+     )
+
+plot( x = aggThu[ , 1 ],
+     y = aggThu[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Thursday"
+     )
+
+plot( x = aggFri[ , 1 ],
+     y = aggFri[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Friday",
+     ylab = "Avg.Steps"
+     )
+
+plot( x = aggSat[ , 1 ],
+     y = aggSat[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Saturday"
+     )
+
+plot( x = aggSun[ , 1 ],
+     y = aggSun[ , 2 ],
+     type = "o",
+     ylim = c( 0, 300 ),
+     xlim = c( 0, 290 ),
+     xlab = "Sunday"
+     )
+```
+    
+### 9. All of the R code needed to reproduce the results (numbers, plots, etc.) in the report
+
+All of the R code can be found in the sections above, all code chunks have been set to display the code, via chunk option ```echo = TRUE```.
+
+#### Thanks for viewing! :)
